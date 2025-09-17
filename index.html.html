@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Atom Viewer</title>
+  <style>
+    body {
+      margin: 0;
+      background: #222;
+      color: white;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+    #menu {
+      padding: 10px;
+      background: #333;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      z-index: 10;
+    }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #00bcd4;
+      color: white;
+      font-size: 16px;
+      transition: 0.3s;
+    }
+    button:hover {
+      background: #0097a7;
+    }
+    #speedControls {
+      margin-top: 20px;
+      text-align: center;
+    }
+    #infoBox {
+      position: fixed;
+      top: 60px;
+      right: 0;
+      width: 250px;
+      height: calc(100% - 60px);
+      background: rgba(0,0,0,0.6);
+      padding: 15px;
+      overflow-y: auto;
+      text-align: left;
+      display: none;
+    }
+    #mainTitle, #home {
+      margin-top: 80px;
+      text-align: center;
+    }
+    #atomLabel {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 40px;
+      font-weight: bold;
+      color: white;
+      pointer-events: none;
+      display: none;
+      z-index: 5;
+    }
+    canvas {
+      display: block;
+    }
+    ul { text-align: left; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div id="menu">
+    <button onclick="showHome()">Home</button>
+    <button onclick="loadAtom('carbon')">Carbon Atom</button>
+    <button onclick="loadAtom('oxygen')">Oxygen Atom</button>
+  </div>
+
+  <div id="home">
+    <h1>🌍 การเผาขยะชีวมวล (Biomass Combustion)</h1>
+    <p>
+      เมื่อเผาขยะชีวมวล (เช่น เศษพืช เศษอาหาร) ที่มีองค์ประกอบของ 
+      <b>คาร์บอน (C)</b>, <b>ไฮโดรเจน (H)</b> และ <b>ออกซิเจน (O)</b> 
+      จะเกิดปฏิกิริยาเผาไหม้ ดังสมการเคมี:
+    </p>
+
+    <p style="font-size:1.3em; font-weight:bold; color:#0ff;">
+      C₆H₁₀O₅ + 6 O₂ → 6 CO₂ + 5 H₂O
+    </p>
+
+    <h2>🔬 ความหมายของธาตุ</h2>
+    <ul>
+      <li><b>C (Carbon)</b> → ธาตุที่เป็นโครงสร้างหลักของชีวมวล</li>
+      <li><b>O (Oxygen)</b> → ธาตุช่วยในการเผาไหม้</li>
+      <li><b>H (Hydrogen)</b> → พบในสารอินทรีย์และน้ำ</li>
+      <li><b>CO₂</b> → คาร์บอนไดออกไซด์ ผลพลอยได้ของการเผาไหม้</li>
+      <li><b>H₂O</b> → น้ำที่เกิดจากปฏิกิริยา</li>
+    </ul>
+
+    <h2>🧪 เลือกเพื่อดูโครงสร้างอะตอม</h2>
+    <button onclick="loadAtom('carbon')">ดู คาร์บอน (C)</button>
+    <button onclick="loadAtom('oxygen')">ดู ออกซิเจน (O)</button>
+  </div>
+
+  <div id="mainTitle">
+    <div id="speedControls">
+      <p>⚡ ปรับความเร็วอิเล็กตรอน</p>
+      <button onclick="setSpeed(0.5)">ช้า</button>
+      <button onclick="setSpeed(1)">ปกติ</button>
+      <button onclick="setSpeed(2)">เร็ว</button>
+    </div>
+  </div>
+
+  <div id="atomLabel"></div>
+  <div id="infoBox"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+
+  <script>
+    let scene, camera, renderer, electrons = [], orbitRings = [], nucleusParts = [];
+    let speedMultiplier = 1;
+
+    const atomData = {
+      carbon: { symbol: "C", protons: 6, neutrons: 6, electrons: 6 },
+      oxygen: { symbol: "O", protons: 8, neutrons: 8, electrons: 8 }
+    };
+
+    function initScene() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+      camera.position.z = 12;
+      animate();
+    }
+
+    function clearScene() {
+      while (scene.children.length > 0) {
+        scene.remove(scene.children[0]);
+      }
+      electrons = [];
+      orbitRings = [];
+      nucleusParts = [];
+    }
+
+    function createOrbitRing(radius) {
+      const geometry = new THREE.RingGeometry(radius - 0.02, radius + 0.02, 64);
+      const material = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+      const ring = new THREE.Mesh(geometry, material);
+      ring.rotation.x = Math.PI / 2;
+      scene.add(ring);
+      orbitRings.push(ring);
+    }
+
+    function createNucleus(protons, neutrons) {
+      const group = new THREE.Group();
+      const protonMat = new THREE.MeshPhongMaterial({ color: 0xff4444, shininess: 80 });
+      const neutronMat = new THREE.MeshPhongMaterial({ color: 0x4488ff, shininess: 80 });
+      const sphereGeo = new THREE.SphereGeometry(0.4, 16, 16);
+
+      const total = protons + neutrons;
+      const radius = 1.5;
+
+      for (let i = 0; i < total; i++) {
+        const particle = new THREE.Mesh(sphereGeo, i < protons ? protonMat : neutronMat);
+
+        // กระจายแบบทรงกลมแน่นตรงกลาง
+        const u = Math.random();
+        const v = Math.random();
+        const theta = 2 * Math.PI * u;
+        const phi = Math.acos(2 * v - 1);
+        const r = radius * Math.cbrt(Math.random());
+
+        particle.position.set(
+          r * Math.sin(phi) * Math.cos(theta),
+          r * Math.sin(phi) * Math.sin(theta),
+          r * Math.cos(phi)
+        );
+
+        group.add(particle);
+        nucleusParts.push(particle);
+      }
+
+      scene.add(group);
+    }
+
+    function createAtom(atom) {
+      clearScene();
+
+      // นิวเคลียส
+      createNucleus(atomData[atom].protons, atomData[atom].neutrons);
+
+      // แสง
+      const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+      scene.add(ambient);
+      const point = new THREE.PointLight(0xffffff, 1.5);
+      point.position.set(5, 5, 5);
+      scene.add(point);
+
+      // อิเล็กตรอน + วงโคจร
+      let electronCount = atomData[atom].electrons;
+      for (let i = 0; i < electronCount; i++) {
+        const eGeo = new THREE.SphereGeometry(0.25, 16, 16);
+        const eMat = new THREE.MeshPhongMaterial({ color: 0x44aaff, shininess: 100 });
+        const electron = new THREE.Mesh(eGeo, eMat);
+
+        const radius = (i < 2) ? 2 : 3.5;
+        if (!orbitRings.find(r => Math.abs(r.geometry.parameters.innerRadius - radius) < 0.1)) {
+          createOrbitRing(radius);
+        }
+
+        scene.add(electron);
+        electrons.push({
+          mesh: electron,
+          angle: (i * (Math.PI * 2)) / electronCount,
+          radius: radius,
+          speed: 0.02 + Math.random() * 0.02
+        });
+      }
+
+      // ข้อมูลด้านขวา
+      document.getElementById("infoBox").style.display = "block";
+      document.getElementById("infoBox").innerHTML = `
+        <h2>${atomData[atom].symbol} - ${atom.charAt(0).toUpperCase() + atom.slice(1)}</h2>
+        <p><b>Protons:</b> ${atomData[atom].protons}</p>
+        <p><b>Neutrons:</b> ${atomData[atom].neutrons}</p>
+        <p><b>Electrons:</b> ${atomData[atom].electrons}</p>
+      `;
+
+      // ตัวอักษรตรงกลาง
+      const label = document.getElementById("atomLabel");
+      label.style.display = "block";
+      label.textContent = atomData[atom].symbol;
+
+      document.getElementById("home").style.display = "none";
+    }
+
+    function loadAtom(type) {
+      createAtom(type);
+    }
+
+    function showHome() {
+      document.getElementById("home").style.display = "block";
+      document.getElementById("infoBox").style.display = "none";
+      document.getElementById("atomLabel").style.display = "none";
+      clearScene();
+    }
+
+    function setSpeed(multiplier) {
+      speedMultiplier = multiplier;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      electrons.forEach(e => {
+        e.angle += e.speed * speedMultiplier;
+        e.mesh.position.x = Math.cos(e.angle) * e.radius;
+        e.mesh.position.y = Math.sin(e.angle) * e.radius;
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    initScene();
+  </script>
+</body>
+</html>
